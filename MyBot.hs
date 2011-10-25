@@ -6,11 +6,13 @@ import System.IO
 import qualified Data.PQueue.Min as PQ
 import System.Random
 import Control.Monad (msum)
+import qualified Data.Map as M
 
 import Ants
 
 type Heuristics = Int
 data Path = Path Heuristics Direction Point deriving (Eq, Ord)
+type AntOrders = M.Map Ant [Order]
 
 -- For now we don't need accurate distances
 simpleDistance :: Point -> Point -> Int
@@ -22,11 +24,11 @@ simpleClosest ants dest = snd $ minimum $ map (\a -> (simpleDistance (pointAnt a
 path :: Point -> Point -> World -> [Direction]
 path origin dest world = map (\(Path _ d _) -> d) $ go [] $ PQ.fromList $ open origin
   where
-    open point = [Path (simpleDistance (move dir point) point) dir (move dir point) | dir <- [North .. West], walkable world (move dir point)]
+    open point = {-# SCC "open" #-} [Path (simpleDistance (move dir point) point) dir (move dir point) | dir <- [North .. West], walkable world (move dir point)]
     go :: [Path] -> PQ.MinQueue Path -> [Path]
-    go path queue =
+    go path queue = {-# SCC "go" #-}
       let p@(Path _ _ point) = PQ.findMin queue
-          newpath = path ++ [p]
+          newpath = p `seq` path ++ [p]
           newqueue = PQ.union (PQ.deleteMin queue) $ PQ.fromList $ open point
       in if point == dest then newpath else go newpath newqueue
 
@@ -39,16 +41,25 @@ tryOrder w = find (passable w)
 generateOrders :: Ant -> [Order]
 generateOrders a = map (Order a) [North .. West]
 
-gatherFoods :: GameState -> Maybe [Order]
+appendOrder :: Order -> AntOrders -> AntOrders
+appendOrder o o' = M.insertWith' (flip (++)) (ant o) [o] o'
+
+toAntOrders :: [Order] -> AntOrders
+toAntOrders = foldr appendOrder M.empty
+
+gatherFoods :: GameState -> AntOrders
 gatherFoods gs
-  | length (food gs) > 0 = Just $ map (\f -> gatherFood (simpleClosest (myAnts $ ants gs) f) (world gs) f)  $ food gs
-  | otherwise = Nothing
+  | length (food gs) > 0 = toAntOrders $ map (\f -> gatherFood (simpleClosest (myAnts $ ants gs) f) (world gs) f)  $ food gs
+  | otherwise = M.empty
 
 gatherFood :: Ant -> World -> Food -> Order
 gatherFood ant w f = Order ant $ head $ path (pointAnt ant) f w
 
-randomWalks :: StdGen -> GameState -> Maybe [Order]
-randomWalks g gs = Just $ fst $ foldr randomWalk ([], g) $ myAnts $ ants gs
+randomWalks :: StdGen -> GameState -> AntOrders
+randomWalks g gs = toAntOrders $ fst $ foldr randomWalk ([], g) $ myAnts $ ants gs
+
+walks :: GameState -> AntOrders
+walks gs = toAntOrders [Order ant dir | ant <- myAnts $ ants gs, dir <- [North .. West]]
 
 randomWalk :: Ant -> ([Order], StdGen) -> ([Order], StdGen)
 randomWalk a (o, g) =
@@ -56,10 +67,16 @@ randomWalk a (o, g) =
   in ((Order a ([North .. West] !! i)) : o, g')
 
 genOrders :: StdGen -> GameState -> [Order]
-genOrders stdgen gs = fromJust $ msum [
-    gatherFoods gs
-  , randomWalks stdgen gs
+genOrders gen gs = map head $ M.elems $ M.filter (\x -> length x > 0) $ M.map (filter (passable (world gs))) $ M.unionsWith (++) [
+  gatherFoods gs
+  , walks gs
   ]
+-- genOrders stdgen gs = map head $ groupBy (\a b -> ant a == ant b) $ filter (passable (world gs)) $ concat [
+--     gatherFoods gs
+--     , randomWalks stdgen gs
+--     , walks gs
+--   -- , walks gs
+--   ]
 
 {- | 
  - Implement this function to create orders.
@@ -72,15 +89,9 @@ genOrders stdgen gs = fromJust $ msum [
 doTurn :: GameParams -> GameState -> IO [Order]
 doTurn gp gs = do
   stdgen <- getStdGen
-  -- generate orders for all ants belonging to me
-  -- let generatedOrders = map generateOrders $ myAnts $ ants gs
-  -- -- for each ant take the first "passable" order, if one exists
-  --     orders = mapMaybe (tryOrder (world gs)) generatedOrders
-  -- -- this shows how to check the remaining time
   let orders = genOrders stdgen gs
-  elapsedTime <- timeRemaining gs
-  hPutStrLn stderr $ show elapsedTime
-  -- wrap list of orders back into a monad
+  r <- length orders `seq` timeRemaining gs
+  hPutStrLn stderr $ show orders
   return orders
 
 -- | This runs the game
