@@ -20,6 +20,8 @@ module Ants
   , occupied
   , order2point
   , passable
+  , walkable
+  , move
   , timeRemaining
   , unoccupied
   , visible
@@ -270,6 +272,9 @@ passable :: World -> Order -> Bool
 passable w order =
   let newPoint = move (directionOrder order) (pointAnt $ ant order)
   in  tile (w %! newPoint) /= Water
+
+walkable :: World -> Point -> Bool
+walkable w dest = tile (w %! dest) /= Water
 
 occupied :: World -> Order -> Bool
 occupied w order = 
