@@ -9,6 +9,7 @@ module Ants
   , Order (..)
   , Point
   , World
+  , Food
 
     -- Utility functions
   , direction
@@ -214,12 +215,12 @@ getPointCircle r2 =
 --------------------------------------------------------------------------------
 -- Ants ------------------------------------------------------------------------
 --------------------------------------------------------------------------------
-data Owner = Me | Enemy Int deriving (Show,Eq)
+data Owner = Me | Enemy Int deriving (Show,Eq,Ord)
 
 data Ant = Ant
   { pointAnt :: Point
   , ownerAnt :: Owner
-  } deriving (Show)
+  } deriving (Show, Ord, Eq)
 
 isMe, isEnemy :: Ant -> Bool
 isMe = (==Me).ownerAnt
@@ -248,7 +249,7 @@ enemyHills = filter isEnemy's
 --------------------------------------------------------------------------------
 -- Orders ----------------------------------------------------------------------
 --------------------------------------------------------------------------------
-data Direction = North | East | South | West deriving (Bounded, Eq, Enum)
+data Direction = North | East | South | West deriving (Bounded, Eq, Enum, Ord)
 
 instance Show Direction where
   show North = "N"
