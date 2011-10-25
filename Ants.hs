@@ -7,6 +7,7 @@ module Ants
   , GameParams (..)
   , GameState (..)
   , Order (..)
+  , Point
   , World
 
     -- Utility functions
